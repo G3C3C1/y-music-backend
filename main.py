@@ -9,68 +9,67 @@ CORS(app)
 
 PREFIX = "/muzik"
 
-# COOKIES DOSYASI BURADA GERİ GELDİ 🚀
-YDL_OPTS = {
-    "cookiefile": "cookies.txt",  # GitHub'daki cookies.txt dosyasını kullanır
-    "quiet": True,
-    "no_warnings": True,
-    "nocheckcertificate": True,
-    "format": "bestaudio/best",
-    "noplaylist": True,
-    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["android", "ios"],
-            "skip": ["dash", "hls"]
+# Senin çalışan kodundan aldığımız ayarların Render uyarlaması
+def get_ydl_opts():
+    return {
+        "format": "bestaudio/best", # En iyi ses kalitesini zorla
+        "quiet": True,
+        "no_warnings": True,
+        "nocheckcertificate": True,
+        "cookiefile": "cookies.txt", # Bu dosya GitHub'da MUTLAKA olmalı
+        "noplaylist": True,
+        # Render için ekstra "insan" taklidi
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios"],
+                "skip": ["dash", "hls"]
+            }
         }
-    },
-    "socket_timeout": 15,
-    "retries": 5,
-    "ignoreerrors": True
-}
+    }
 
 @app.route("/")
 def home():
-    try:
-        return app.send_static_file("index.html")
-    except Exception:
-        return "Y Music Sunucusu Aktif! index.html bulunamadı.", 200
+    return app.send_static_file("index.html")
 
 @app.route(f"{PREFIX}/ara")
 def ara():
-    q = request.args.get("q", "").strip()
-    if not q:
+    query = request.args.get("q", "").strip()
+    if not query:
         return jsonify({"sonuclar": []})
 
     try:
-        # Her aramada yeni bir nesne oluşturmak bazen engelleri aşmaya yardımcı olur
-        with yt_dlp.YoutubeDL(YDL_OPTS) as ydl:
-            info = ydl.extract_info(f"ytsearch5:{q}", download=False)
+        # Senin kodundaki extract_info mantığı
+        with yt_dlp.YoutubeDL(get_ydl_opts()) as ydl:
+            # Arama yaparken skip_download: True ekliyoruz (senin koddaki gibi)
+            info = ydl.extract_info(f"ytsearch5:{query}", download=False)
             
         if not info or 'entries' not in info:
             return jsonify({"sonuclar": []})
 
-        entries = [e for e in info.get("entries", []) if e is not None]
         sonuclar = []
+        for entry in info.get("entries", []):
+            if entry:
+                # Oynatılabilir direkt URL'i çekiyoruz
+                audio_url = entry.get("url")
+                
+                # Eğer url yoksa formatlar içinden en iyisini seç (Senin sarki_link_al mantığı)
+                if not audio_url and "formats" in entry:
+                    audio_url = entry["formats"][0].get("url")
 
-        for entry in entries:
-            audio_url = entry.get("url")
-            if not audio_url and "formats" in entry:
-                audio_url = entry["formats"][0].get("url")
-
-            if audio_url:
                 sonuclar.append({
-                    "title": entry.get("title", "Müzik"),
+                    "title": entry.get("title", "Bilinmeyen"),
                     "url": audio_url,
                     "thumbnail": entry.get("thumbnail", ""),
+                    # Süre formatını senin koddaki gibi hesaplıyoruz
+                    "duration": f"{entry.get('duration', 0)//60}:{entry.get('duration', 0)%60:02d}"
                 })
 
         return jsonify({"sonuclar": sonuclar})
 
     except Exception as e:
-        print(f"HATA: {str(e)}")
         return jsonify({
-            "hata": "YouTube Engelini Aşamadık!",
+            "hata": "YouTube erişim hatası!",
             "detay": str(e)
         }), 500
 
